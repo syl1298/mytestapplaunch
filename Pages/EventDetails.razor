@@ -1,0 +1,260 @@
+@page "/events"
+@using MyBlazorApp.Models
+@using MyBlazorApp.Components
+@using MyBlazorApp.Services
+@inject IEventDataService DataService
+@inject ISessionService SessionService
+@inject NavigationManager Navigation
+
+<PageTitle>Event Details - EventEase</PageTitle>
+
+<div class="container">
+    <h1 class="mb-4">Event Details</h1>
+
+    <!-- Performance Metrics -->
+    @if (showPerformanceMetrics)
+    {
+        <div class="alert alert-info">
+            <strong>Performance:</strong> Displaying @filteredEventsList.Count events | Last filter took @lastFilterTimeMs ms
+        </div>
+    }
+
+    <!-- Search/Filter Section -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <label class="form-label">Search by Event Name</label>
+            <input type="text" class="form-control" @bind="searchEventName" @bind:after="OnFilterChanged" placeholder="Enter event name..." />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Filter by Date</label>
+            <input type="date" class="form-control" @bind="filterDate" @bind:after="OnFilterChanged" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Search by Location</label>
+            <input type="text" class="form-control" @bind="searchLocation" @bind:after="OnFilterChanged" placeholder="Enter location..." />
+        </div>
+    </div>
+
+    <!-- Event Cards List -->
+    <div class="row">
+        @if (filteredEventsList.Any())
+        {
+            @foreach (var eventItem in filteredEventsList)
+            {
+                <div class="col-md-6 col-lg-4">
+                    <EventCard Event="eventItem" />
+                </div>
+            }
+        }
+        else
+        {
+            <div class="col-12">
+                <div class="alert alert-info">No events found matching your search criteria.</div>
+            </div>
+        }
+    </div>
+
+    <!-- Add New Event Section -->
+    <div class="mt-5">
+        <h3>Add New Event</h3>
+        @if (!string.IsNullOrEmpty(validationMessage))
+        {
+            <div class="alert alert-danger">@validationMessage</div>
+        }
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success">@successMessage</div>
+        }
+        <div class="card p-4">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Event Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control @(string.IsNullOrWhiteSpace(newEvent.EventName) && attemptedSubmit ? "is-invalid" : "")" 
+                           @bind="newEvent.EventName" 
+                           placeholder="Enter event name" 
+                           maxlength="100" />
+                    @if (string.IsNullOrWhiteSpace(newEvent.EventName) && attemptedSubmit)
+                    {
+                        <div class="invalid-feedback">Event name is required.</div>
+                    }
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Date <span class="text-danger">*</span></label>
+                    <input type="datetime-local" class="form-control" @bind="newEvent.Date" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Location <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control @(string.IsNullOrWhiteSpace(newEvent.Location) && attemptedSubmit ? "is-invalid" : "")" 
+                           @bind="newEvent.Location" 
+                           placeholder="Enter location" 
+                           maxlength="200" />
+                    @if (string.IsNullOrWhiteSpace(newEvent.Location) && attemptedSubmit)
+                    {
+                        <div class="invalid-feedback">Location is required.</div>
+                    }
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" @bind="newEvent.Description" placeholder="Enter description" rows="2" maxlength="500"></textarea>
+                </div>
+                <div class="col-12">
+                    <button class="btn btn-primary" @onclick="AddEvent">Add Event</button>
+                    <button class="btn btn-secondary ms-2" @onclick="GenerateLargeDataset">Generate 1000 Events (Performance Test)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="mt-4">
+        <a href="/registrations" class="btn btn-secondary">View Registrations</a>
+        <a href="/register" class="btn btn-primary ms-2">Register for Event</a>
+        <a href="/test" class="btn btn-info ms-2">Run Tests</a>
+    </div>
+</div>
+
+@code {
+    private List<Event> events = new();
+    private List<Event> filteredEventsList = new();
+    private Event newEvent = new() { Date = DateTime.Now };
+    
+    private string searchEventName = string.Empty;
+    private DateTime? filterDate = null;
+    private string searchLocation = string.Empty;
+    private string validationMessage = string.Empty;
+    private string successMessage = string.Empty;
+    private bool attemptedSubmit = false;
+    
+    // Performance tracking
+    private bool showPerformanceMetrics = false;
+    private double lastFilterTimeMs = 0;
+
+    protected override void OnInitialized()
+    {
+        SessionService.UpdateActivity();
+        events = DataService.GetAllEvents();
+        ApplyFilters();
+    }
+
+    private void OnFilterChanged()
+    {
+        ApplyFilters();
+    }
+
+    // PERFORMANCE OPTIMIZATION: Cache filtered results instead of recalculating on every render
+    private void ApplyFilters()
+    {
+        var startTime = DateTime.Now;
+        
+        var filtered = events.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(searchEventName))
+        {
+            filtered = filtered.Where(e => e.EventName?.Contains(searchEventName, StringComparison.OrdinalIgnoreCase) ?? false);
+        }
+
+        if (filterDate.HasValue)
+        {
+            filtered = filtered.Where(e => e.Date.Date == filterDate.Value.Date);
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchLocation))
+        {
+            filtered = filtered.Where(e => e.Location?.Contains(searchLocation, StringComparison.OrdinalIgnoreCase) ?? false);
+        }
+
+        filteredEventsList = filtered.OrderBy(e => e.Date).ToList();
+        
+        var endTime = DateTime.Now;
+        lastFilterTimeMs = (endTime - startTime).TotalMilliseconds;
+    }
+
+    private void AddEvent()
+    {
+        attemptedSubmit = true;
+        validationMessage = string.Empty;
+        successMessage = string.Empty;
+
+        // Validation
+        if (string.IsNullOrWhiteSpace(newEvent.EventName))
+        {
+            validationMessage = "Event name is required.";
+            return;
+        }
+
+        if (newEvent.EventName.Length > 100)
+        {
+            validationMessage = "Event name must be 100 characters or less.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newEvent.Location))
+        {
+            validationMessage = "Location is required.";
+            return;
+        }
+
+        if (newEvent.Location.Length > 200)
+        {
+            validationMessage = "Location must be 200 characters or less.";
+            return;
+        }
+
+        if (newEvent.Date < DateTime.Now.AddYears(-1))
+        {
+            validationMessage = "Event date cannot be more than 1 year in the past.";
+            return;
+        }
+
+        if (newEvent.Date > DateTime.Now.AddYears(10))
+        {
+            validationMessage = "Event date cannot be more than 10 years in the future.";
+            return;
+        }
+
+        // Check for duplicates
+        if (events.Any(e => e.EventName.Equals(newEvent.EventName, StringComparison.OrdinalIgnoreCase) 
+                           && e.Date.Date == newEvent.Date.Date 
+                           && e.Location.Equals(newEvent.Location, StringComparison.OrdinalIgnoreCase)))
+        {
+            validationMessage = "An event with the same name, date, and location already exists.";
+            return;
+        }
+
+        // Add event
+        newEvent.Id = events.Any() ? events.Max(e => e.Id) + 1 : 1;
+        DataService.AddEvent(newEvent);
+        events = DataService.GetAllEvents();
+        successMessage = $"Event '{newEvent.EventName}' added successfully!";
+        
+        newEvent = new Event { Date = DateTime.Now };
+        attemptedSubmit = false;
+        
+        ApplyFilters();
+    }
+
+    private void GenerateLargeDataset()
+    {
+        showPerformanceMetrics = true;
+        var random = new Random();
+        var locations = new[] { "New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose" };
+        var eventTypes = new[] { "Conference", "Workshop", "Seminar", "Festival", "Expo", "Meeting", "Webinar", "Concert", "Exhibition", "Summit" };
+        
+        var startId = events.Any() ? events.Max(e => e.Id) + 1 : 1;
+        
+        for (int i = 0; i < 1000; i++)
+        {
+            events.Add(new Event
+            {
+                Id = startId + i,
+                EventName = $"{eventTypes[random.Next(eventTypes.Length)]} {random.Next(1, 999)}",
+                Date = DateTime.Now.AddDays(random.Next(-30, 365)),
+                Location = $"{locations[random.Next(locations.Length)]} Center",
+                Description = $"Generated test event #{i + 1}"
+            });
+        }
+        
+        successMessage = "Generated 1000 events for performance testing!";
+        ApplyFilters();
+    }
+}

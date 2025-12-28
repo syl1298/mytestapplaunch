@@ -1,0 +1,74 @@
+@using MyBlazorApp.Models
+
+@if (Event != null && IsValidEvent())
+{
+    <div class="event-card">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">@Event.EventName</h5>
+                <p class="card-text">
+                    <strong>Date:</strong> @FormatDate(Event.Date)<br/>
+                    <strong>Location:</strong> @Event.Location
+                </p>
+                @if (!string.IsNullOrEmpty(Event.Description))
+                {
+                    <p class="card-text">@Event.Description</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="event-card">
+        <div class="card border-danger">
+            <div class="card-body">
+                <h5 class="card-title text-danger">Invalid Event Data</h5>
+                <p class="card-text">@GetValidationMessage()</p>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Event? Event { get; set; }
+
+    private bool IsValidEvent()
+    {
+        if (Event == null) return false;
+        
+        if (string.IsNullOrWhiteSpace(Event.EventName)) return false;
+        
+        if (string.IsNullOrWhiteSpace(Event.Location)) return false;
+        
+        if (Event.Date < DateTime.MinValue || Event.Date > DateTime.MaxValue) return false;
+        
+        return true;
+    }
+
+    private string FormatDate(DateTime date)
+    {
+        try
+        {
+            return date.ToString("dddd, MMMM dd, yyyy");
+        }
+        catch
+        {
+            return "Invalid Date";
+        }
+    }
+
+    private string GetValidationMessage()
+    {
+        if (Event == null) return "Event object is null.";
+        
+        if (string.IsNullOrWhiteSpace(Event.EventName)) 
+            return "Event name is required.";
+        
+        if (string.IsNullOrWhiteSpace(Event.Location)) 
+            return "Event location is required.";
+        
+        return "Event data contains invalid values.";
+    }
+}

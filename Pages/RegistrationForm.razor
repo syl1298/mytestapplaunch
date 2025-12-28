@@ -1,0 +1,252 @@
+@page "/register"
+@page "/register/{EventId:int}"
+@using MyBlazorApp.Models
+@using MyBlazorApp.Services
+@using System.ComponentModel.DataAnnotations
+@inject IEventDataService DataService
+@inject ISessionService SessionService
+@inject NavigationManager Navigation
+
+<PageTitle>Event Registration - EventEase</PageTitle>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg">
+                <div class="card-header bg-primary text-white">
+                    <h2 class="mb-0">Event Registration Form</h2>
+                </div>
+                <div class="card-body p-4">
+                    @if (selectedEvent != null)
+                    {
+                        <div class="alert alert-info">
+                            <h5>@selectedEvent.EventName</h5>
+                            <p class="mb-0">
+                                <strong>Date:</strong> @selectedEvent.Date.ToString("MMMM dd, yyyy HH:mm")<br/>
+                                <strong>Location:</strong> @selectedEvent.Location
+                            </p>
+                        </div>
+                    }
+
+                    <EditForm Model="@registration" OnValidSubmit="HandleValidSubmit">
+                        <DataAnnotationsValidator />
+                        
+                        <!-- Event Selection -->
+                        @if (EventId == null || EventId == 0)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">Select Event <span class="text-danger">*</span></label>
+                                <InputSelect class="form-select" @bind-Value="registration.EventId" @bind-Value:after="OnEventSelected">
+                                    <option value="0">-- Select an event --</option>
+                                    @foreach (var evt in events)
+                                    {
+                                        <option value="@evt.Id">@evt.EventName - @evt.Date.ToString("MM/dd/yyyy")</option>
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => registration.EventId)" class="text-danger" />
+                            </div>
+                        }
+
+                        <!-- Name -->
+                        <div class="mb-3">
+                            <label class="form-label">Full Name <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="registration.Name" placeholder="Enter your full name" />
+                            <ValidationMessage For="@(() => registration.Name)" class="text-danger" />
+                        </div>
+
+                        <!-- Email -->
+                        <div class="mb-3">
+                            <label class="form-label">Email Address <span class="text-danger">*</span></label>
+                            <InputText type="email" class="form-control" @bind-Value="registration.Email" placeholder="your.email@example.com" />
+                            <ValidationMessage For="@(() => registration.Email)" class="text-danger" />
+                            <small class="form-text text-muted">We'll send confirmation details to this email.</small>
+                        </div>
+
+                        <!-- Contact Number -->
+                        <div class="mb-3">
+                            <label class="form-label">Contact Number <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="registration.ContactNumber" placeholder="+1-555-123-4567" />
+                            <ValidationMessage For="@(() => registration.ContactNumber)" class="text-danger" />
+                        </div>
+
+                        <!-- Validation Summary -->
+                        <ValidationSummary class="alert alert-danger" />
+
+                        <!-- Custom Validation Messages -->
+                        @if (!string.IsNullOrEmpty(customValidationMessage))
+                        {
+                            <div class="alert alert-warning">
+                                <strong>Validation Error:</strong> @customValidationMessage
+                            </div>
+                        }
+
+                        <!-- Success Message -->
+                        @if (!string.IsNullOrEmpty(successMessage))
+                        {
+                            <div class="alert alert-success">
+                                <h5>✓ Registration Successful!</h5>
+                                <p>@successMessage</p>
+                                <button type="button" class="btn btn-success" @onclick="ViewRegistrations">View My Registrations</button>
+                            </div>
+                        }
+
+                        <!-- Error Message -->
+                        @if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <div class="alert alert-danger">
+                                <h5>⚠ Registration Failed</h5>
+                                <p>@errorMessage</p>
+                                <button type="button" class="btn btn-danger" @onclick="RetryRegistration">Try Again</button>
+                            </div>
+                        }
+
+                        <!-- Submit Buttons -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg" disabled="@isSubmitting">
+                                @if (isSubmitting)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <span>Processing...</span>
+                                }
+                                else
+                                {
+                                    <span>Register for Event</span>
+                                }
+                            </button>
+                            <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+                        </div>
+                    </EditForm>
+
+                    <!-- Registration Statistics -->
+                    @if (selectedEvent != null && registrationCount > 0)
+                    {
+                        <div class="mt-4 alert alert-light">
+                            <small>
+                                <strong>@registrationCount</strong> people have already registered for this event.
+                            </small>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Session Info -->
+            <div class="mt-3">
+                <small class="text-muted">
+                    Session ID: @SessionService.CurrentSession.SessionId | 
+                    Duration: @SessionService.GetSessionDuration().ToString(@"hh\:mm\:ss")
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int? EventId { get; set; }
+
+    private Registration registration = new();
+    private List<Event> events = new();
+    private Event? selectedEvent = null;
+    private int registrationCount = 0;
+
+    private bool isSubmitting = false;
+    private string successMessage = string.Empty;
+    private string errorMessage = string.Empty;
+    private string customValidationMessage = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        SessionService.UpdateActivity();
+        events = DataService.GetAllEvents().Where(e => e.Date > DateTime.Now).OrderBy(e => e.Date).ToList();
+
+        if (EventId.HasValue && EventId.Value > 0)
+        {
+            registration.EventId = EventId.Value;
+            OnEventSelected();
+        }
+    }
+
+    private void OnEventSelected()
+    {
+        selectedEvent = DataService.GetEventById(registration.EventId);
+        if (selectedEvent != null)
+        {
+            registrationCount = DataService.GetRegistrationsByEvent(selectedEvent.Id).Count;
+            SessionService.AddViewedEvent(selectedEvent.Id);
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        isSubmitting = true;
+        customValidationMessage = string.Empty;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            // Additional custom validation
+            if (registration.EventId == 0)
+            {
+                customValidationMessage = "Please select an event.";
+                isSubmitting = false;
+                return;
+            }
+
+            // Check if email is already registered for this event
+            var existingRegistration = DataService.GetAllRegistrations()
+                .FirstOrDefault(r => r.EventId == registration.EventId 
+                    && r.Email.Equals(registration.Email, StringComparison.OrdinalIgnoreCase)
+                    && r.Status != RegistrationStatus.Cancelled);
+
+            if (existingRegistration != null)
+            {
+                customValidationMessage = "This email is already registered for this event.";
+                isSubmitting = false;
+                return;
+            }
+
+            // Simulate processing delay
+            await Task.Delay(1000);
+
+            // Save registration
+            registration.Status = RegistrationStatus.Confirmed;
+            DataService.AddRegistration(registration);
+            
+            // Update session
+            SessionService.AddRegisteredEvent(registration.EventId);
+            SessionService.SetSessionData("LastRegistration", registration);
+
+            successMessage = $"Thank you, {registration.Name}! Your registration for '{selectedEvent?.EventName}' has been confirmed. " +
+                           $"A confirmation email will be sent to {registration.Email}.";
+
+            // Clear form
+            registration = new Registration();
+            selectedEvent = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An unexpected error occurred: {ex.Message}. Please try again or contact support.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void RetryRegistration()
+    {
+        errorMessage = string.Empty;
+        customValidationMessage = string.Empty;
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/events");
+    }
+
+    private void ViewRegistrations()
+    {
+        Navigation.NavigateTo("/registrations");
+    }
+}

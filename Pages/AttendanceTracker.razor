@@ -1,0 +1,431 @@
+@page "/attendance"
+@page "/attendance/{EventId:int}"
+@using MyBlazorApp.Models
+@using MyBlazorApp.Services
+@inject IEventDataService DataService
+@inject ISessionService SessionService
+
+<PageTitle>Attendance Tracker - EventEase</PageTitle>
+
+<div class="container">
+    <h1 class="mb-4">Event Attendance Tracker</h1>
+
+    <!-- Event Selection -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4>Select Event</h4>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <select class="form-select" @bind="selectedEventId" @bind:after="LoadAttendanceData">
+                        <option value="0">-- All Events --</option>
+                        @foreach (var evt in events)
+                        {
+                            <option value="@evt.Id">@evt.EventName - @evt.Date.ToString("MM/dd/yyyy")</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <button class="btn btn-primary" @onclick="ShowCheckInModal">
+                        <span class="bi bi-person-plus"></span> Check In Attendee
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance Statistics -->
+    @if (selectedEventId > 0)
+    {
+        var evt = events.FirstOrDefault(e => e.Id == selectedEventId);
+        if (evt != null)
+        {
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h6>Total Registered</h6>
+                            <h3>@totalRegistrations</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h6>Checked In</h6>
+                            <h3>@checkedInCount</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h6>Attendance Rate</h6>
+                            <h3>@attendanceRate%</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-dark">
+                        <div class="card-body">
+                            <h6>No Show</h6>
+                            <h3>@noShowCount</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    <!-- Check-In Modal -->
+    @if (showCheckInModal)
+    {
+        <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Check In Attendee</h5>
+                        <button type="button" class="btn-close" @onclick="CloseCheckInModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        @if (!string.IsNullOrEmpty(checkInMessage))
+                        {
+                            <div class="alert alert-@checkInMessageType">@checkInMessage</div>
+                        }
+
+                        <div class="mb-3">
+                            <label class="form-label">Event</label>
+                            <select class="form-select" @bind="checkInEventId">
+                                <option value="0">-- Select Event --</option>
+                                @foreach (var evt in events.Where(e => e.Date.Date <= DateTime.Now.Date))
+                                {
+                                    <option value="@evt.Id">@evt.EventName</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Attendee Email</label>
+                            <input type="email" class="form-control" @bind="checkInEmail" placeholder="attendee@email.com" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Notes (Optional)</label>
+                            <textarea class="form-control" @bind="checkInNotes" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseCheckInModal">Cancel</button>
+                        <button type="button" class="btn btn-primary" @onclick="ProcessCheckIn" disabled="@isProcessingCheckIn">
+                            @if (isProcessingCheckIn)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            Check In
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Attendance List -->
+    <div class="card">
+        <div class="card-header">
+            <h4>Attendance Records</h4>
+        </div>
+        <div class="card-body">
+            @if (filteredAttendances.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Attendee</th>
+                                <th>Check-In Time</th>
+                                <th>Check-Out Time</th>
+                                <th>Status</th>
+                                <th>Notes</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var attendance in filteredAttendances.OrderByDescending(a => a.CheckInTime))
+                            {
+                                var evt = events.FirstOrDefault(e => e.Id == attendance.EventId);
+                                <tr>
+                                    <td>@evt?.EventName</td>
+                                    <td>@attendance.AttendeeEmail</td>
+                                    <td>@attendance.CheckInTime.ToString("MM/dd/yyyy HH:mm")</td>
+                                    <td>@(attendance.CheckOutTime?.ToString("MM/dd/yyyy HH:mm") ?? "—")</td>
+                                    <td>
+                                        <span class="badge bg-@GetStatusColor(attendance.Status)">
+                                            @attendance.Status
+                                        </span>
+                                    </td>
+                                    <td>@(string.IsNullOrEmpty(attendance.Notes) ? "—" : attendance.Notes)</td>
+                                    <td>
+                                        @if (attendance.Status == AttendanceStatus.CheckedIn)
+                                        {
+                                            <button class="btn btn-sm btn-warning" @onclick="() => CheckOut(attendance.Id)">
+                                                Check Out
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-info">No attendance records found.</div>
+            }
+        </div>
+    </div>
+
+    <!-- Registrations without Check-In -->
+    @if (selectedEventId > 0 && registrationsWithoutCheckIn.Any())
+    {
+        <div class="card mt-4">
+            <div class="card-header bg-warning">
+                <h5>Registered but Not Checked In</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Contact</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var reg in registrationsWithoutCheckIn)
+                            {
+                                <tr>
+                                    <td>@reg.Name</td>
+                                    <td>@reg.Email</td>
+                                    <td>@reg.ContactNumber</td>
+                                    <td>@reg.Status</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-success" @onclick="() => QuickCheckIn(reg)">
+                                            Quick Check-In
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int? EventId { get; set; }
+
+    private List<Event> events = new();
+    private List<Attendance> attendances = new();
+    private List<Attendance> filteredAttendances = new();
+    private List<Registration> registrations = new();
+    private List<Registration> registrationsWithoutCheckIn = new();
+
+    private int selectedEventId = 0;
+    private bool showCheckInModal = false;
+    private bool isProcessingCheckIn = false;
+    
+    private int checkInEventId = 0;
+    private string checkInEmail = string.Empty;
+    private string checkInNotes = string.Empty;
+    private string checkInMessage = string.Empty;
+    private string checkInMessageType = "info";
+
+    // Statistics
+    private int totalRegistrations = 0;
+    private int checkedInCount = 0;
+    private int noShowCount = 0;
+    private int attendanceRate = 0;
+
+    protected override void OnInitialized()
+    {
+        SessionService.UpdateActivity();
+        events = DataService.GetAllEvents();
+        
+        if (EventId.HasValue && EventId.Value > 0)
+        {
+            selectedEventId = EventId.Value;
+        }
+        
+        LoadAttendanceData();
+    }
+
+    private void LoadAttendanceData()
+    {
+        attendances = DataService.GetAllAttendances();
+        registrations = DataService.GetAllRegistrations();
+
+        if (selectedEventId > 0)
+        {
+            filteredAttendances = attendances.Where(a => a.EventId == selectedEventId).ToList();
+            var eventRegistrations = registrations.Where(r => r.EventId == selectedEventId).ToList();
+            
+            totalRegistrations = eventRegistrations.Count;
+            checkedInCount = filteredAttendances.Count(a => a.Status == AttendanceStatus.CheckedIn || a.Status == AttendanceStatus.CheckedOut);
+            noShowCount = totalRegistrations - checkedInCount;
+            attendanceRate = totalRegistrations > 0 ? (int)((double)checkedInCount / totalRegistrations * 100) : 0;
+
+            // Find registrations without check-in
+            registrationsWithoutCheckIn = eventRegistrations
+                .Where(r => !attendances.Any(a => a.RegistrationId == r.Id && r.EventId == selectedEventId))
+                .ToList();
+        }
+        else
+        {
+            filteredAttendances = attendances;
+            totalRegistrations = registrations.Count;
+            checkedInCount = attendances.Count;
+            attendanceRate = 0;
+            noShowCount = 0;
+        }
+    }
+
+    private void ShowCheckInModal()
+    {
+        showCheckInModal = true;
+        checkInEventId = selectedEventId;
+        checkInMessage = string.Empty;
+    }
+
+    private void CloseCheckInModal()
+    {
+        showCheckInModal = false;
+        checkInEmail = string.Empty;
+        checkInNotes = string.Empty;
+        checkInMessage = string.Empty;
+        checkInEventId = 0;
+    }
+
+    private async Task ProcessCheckIn()
+    {
+        isProcessingCheckIn = true;
+        checkInMessage = string.Empty;
+
+        try
+        {
+            if (checkInEventId == 0)
+            {
+                checkInMessage = "Please select an event.";
+                checkInMessageType = "danger";
+                isProcessingCheckIn = false;
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(checkInEmail))
+            {
+                checkInMessage = "Please enter attendee email.";
+                checkInMessageType = "danger";
+                isProcessingCheckIn = false;
+                return;
+            }
+
+            // Find registration
+            var registration = registrations.FirstOrDefault(r => 
+                r.EventId == checkInEventId && 
+                r.Email.Equals(checkInEmail, StringComparison.OrdinalIgnoreCase));
+
+            if (registration == null)
+            {
+                checkInMessage = "No registration found for this email and event.";
+                checkInMessageType = "warning";
+                isProcessingCheckIn = false;
+                return;
+            }
+
+            // Check if already checked in
+            if (attendances.Any(a => a.RegistrationId == registration.Id && a.EventId == checkInEventId))
+            {
+                checkInMessage = "This attendee is already checked in.";
+                checkInMessageType = "info";
+                isProcessingCheckIn = false;
+                return;
+            }
+
+            await Task.Delay(500); // Simulate processing
+
+            // Record attendance
+            var attendance = new Attendance
+            {
+                EventId = checkInEventId,
+                RegistrationId = registration.Id,
+                AttendeeEmail = checkInEmail,
+                Notes = checkInNotes,
+                Status = AttendanceStatus.CheckedIn
+            };
+
+            DataService.RecordAttendance(attendance);
+            
+            checkInMessage = $"Successfully checked in {registration.Name}!";
+            checkInMessageType = "success";
+
+            LoadAttendanceData();
+            
+            await Task.Delay(1500);
+            CloseCheckInModal();
+        }
+        catch (Exception ex)
+        {
+            checkInMessage = $"Error: {ex.Message}";
+            checkInMessageType = "danger";
+        }
+        finally
+        {
+            isProcessingCheckIn = false;
+        }
+    }
+
+    private void QuickCheckIn(Registration registration)
+    {
+        var attendance = new Attendance
+        {
+            EventId = registration.EventId,
+            RegistrationId = registration.Id,
+            AttendeeEmail = registration.Email,
+            Status = AttendanceStatus.CheckedIn
+        };
+
+        DataService.RecordAttendance(attendance);
+        LoadAttendanceData();
+    }
+
+    private void CheckOut(int attendanceId)
+    {
+        var attendance = attendances.FirstOrDefault(a => a.Id == attendanceId);
+        if (attendance != null)
+        {
+            attendance.Status = AttendanceStatus.CheckedOut;
+            attendance.CheckOutTime = DateTime.Now;
+            DataService.UpdateAttendance(attendance);
+            LoadAttendanceData();
+        }
+    }
+
+    private string GetStatusColor(AttendanceStatus status)
+    {
+        return status switch
+        {
+            AttendanceStatus.CheckedIn => "success",
+            AttendanceStatus.CheckedOut => "info",
+            AttendanceStatus.NoShow => "danger",
+            _ => "secondary"
+        };
+    }
+}

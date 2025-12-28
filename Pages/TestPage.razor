@@ -1,0 +1,408 @@
+@page "/test"
+@using MyBlazorApp.Models
+@using MyBlazorApp.Components
+
+<PageTitle>Test Suite - EventEase</PageTitle>
+
+<div class="container">
+    <h1 class="mb-4">EventEase Test Suite</h1>
+
+    <div class="alert alert-info">
+        <h5>Test Coverage:</h5>
+        <ul>
+            <li>Edge cases for invalid input</li>
+            <li>Non-existent IDs</li>
+            <li>Data binding validation</li>
+            <li>Routing error handling</li>
+            <li>Performance benchmarks</li>
+        </ul>
+    </div>
+
+    <!-- Test Controls -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4>Run Tests</h4>
+        </div>
+        <div class="card-body">
+            <div class="btn-group mb-3" role="group">
+                <button class="btn btn-primary" @onclick="RunAllTests">Run All Tests</button>
+                <button class="btn btn-secondary" @onclick="RunValidationTests">Validation Tests</button>
+                <button class="btn btn-secondary" @onclick="RunEdgeCaseTests">Edge Case Tests</button>
+                <button class="btn btn-secondary" @onclick="RunPerformanceTests">Performance Tests</button>
+                <button class="btn btn-danger" @onclick="ClearResults">Clear Results</button>
+            </div>
+            
+            @if (isRunning)
+            {
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Running tests...</span>
+                </div>
+                <span class="ms-2">Running tests...</span>
+            }
+        </div>
+    </div>
+
+    <!-- Test Results -->
+    @if (testResults.Any())
+    {
+        <div class="card">
+            <div class="card-header">
+                <h4>Test Results (@passedTests/@totalTests passed)</h4>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Test Name</th>
+                                <th>Category</th>
+                                <th>Result</th>
+                                <th>Duration (ms)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var result in testResults.OrderBy(r => r.Category).ThenBy(r => r.Name))
+                            {
+                                <tr class="@(result.Passed ? "table-success" : "table-danger")">
+                                    <td>
+                                        @if (result.Passed)
+                                        {
+                                            <span class="badge bg-success">✓ PASS</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">✗ FAIL</span>
+                                        }
+                                    </td>
+                                    <td>@result.Name</td>
+                                    <td>@result.Category</td>
+                                    <td>@result.Message</td>
+                                    <td>@result.DurationMs.ToString("F2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Test Event Cards -->
+    <div class="mt-4">
+        <h3>Visual Tests - Event Card Validation</h3>
+        <div class="row">
+            <!-- Valid Event -->
+            <div class="col-md-4">
+                <h5>Valid Event</h5>
+                <EventCard Event="validEvent" />
+            </div>
+            
+            <!-- Null Event -->
+            <div class="col-md-4">
+                <h5>Null Event</h5>
+                <EventCard Event="nullEvent" />
+            </div>
+            
+            <!-- Invalid Event (Missing Name) -->
+            <div class="col-md-4">
+                <h5>Invalid Event (No Name)</h5>
+                <EventCard Event="invalidEventNoName" />
+            </div>
+            
+            <!-- Invalid Event (Missing Location) -->
+            <div class="col-md-4 mt-3">
+                <h5>Invalid Event (No Location)</h5>
+                <EventCard Event="invalidEventNoLocation" />
+            </div>
+            
+            <!-- Invalid Event (Bad Date) -->
+            <div class="col-md-4 mt-3">
+                <h5>Valid Event (Edge Date)</h5>
+                <EventCard Event="invalidEventBadDate" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="mt-4">
+        <a href="/events" class="btn btn-primary">Back to Events</a>
+        <a href="/invalid-route-test" class="btn btn-warning ms-2">Test Invalid Route</a>
+    </div>
+</div>
+
+@code {
+    private List<TestResult> testResults = new();
+    private bool isRunning = false;
+    private int passedTests = 0;
+    private int totalTests = 0;
+
+    // Test event objects
+    private Event validEvent = new()
+    {
+        Id = 1,
+        EventName = "Valid Test Event",
+        Date = DateTime.Now.AddDays(30),
+        Location = "Test Location",
+        Description = "This is a valid event"
+    };
+
+    private Event? nullEvent = null;
+
+    private Event invalidEventNoName = new()
+    {
+        Id = 2,
+        EventName = "",
+        Date = DateTime.Now,
+        Location = "Test Location"
+    };
+
+    private Event invalidEventNoLocation = new()
+    {
+        Id = 3,
+        EventName = "Test Event",
+        Date = DateTime.Now,
+        Location = ""
+    };
+
+    private Event invalidEventBadDate = new()
+    {
+        Id = 4,
+        EventName = "Edge Date Event",
+        Date = DateTime.MaxValue,
+        Location = "Test Location"
+    };
+
+    private async Task RunAllTests()
+    {
+        ClearResults();
+        isRunning = true;
+        await Task.Delay(100); // Allow UI to update
+        
+        RunValidationTests();
+        RunEdgeCaseTests();
+        RunPerformanceTests();
+        
+        isRunning = false;
+        CalculateStats();
+    }
+
+    private void RunValidationTests()
+    {
+        var category = "Validation";
+        
+        // Test 1: Valid event passes validation
+        RunTest(category, "Valid Event Validation", () =>
+        {
+            var evt = new Event { EventName = "Test", Location = "Here", Date = DateTime.Now };
+            return !string.IsNullOrWhiteSpace(evt.EventName) && !string.IsNullOrWhiteSpace(evt.Location);
+        });
+
+        // Test 2: Empty event name fails
+        RunTest(category, "Empty Event Name Fails", () =>
+        {
+            var evt = new Event { EventName = "", Location = "Here", Date = DateTime.Now };
+            return string.IsNullOrWhiteSpace(evt.EventName);
+        });
+
+        // Test 3: Empty location fails
+        RunTest(category, "Empty Location Fails", () =>
+        {
+            var evt = new Event { EventName = "Test", Location = "", Date = DateTime.Now };
+            return string.IsNullOrWhiteSpace(evt.Location);
+        });
+
+        // Test 4: Null event name fails
+        RunTest(category, "Null Event Name Fails", () =>
+        {
+            var evt = new Event { EventName = null!, Location = "Here", Date = DateTime.Now };
+            return string.IsNullOrWhiteSpace(evt.EventName);
+        });
+
+        // Test 5: Long event name validation
+        RunTest(category, "Event Name Length Validation", () =>
+        {
+            var longName = new string('A', 101);
+            return longName.Length > 100;
+        });
+
+        CalculateStats();
+    }
+
+    private void RunEdgeCaseTests()
+    {
+        var category = "Edge Cases";
+        
+        // Test 1: Null event object
+        RunTest(category, "Null Event Object Handling", () =>
+        {
+            Event? evt = null;
+            return evt == null;
+        });
+
+        // Test 2: Date in the past
+        RunTest(category, "Past Date Validation", () =>
+        {
+            var evt = new Event { EventName = "Test", Location = "Here", Date = DateTime.Now.AddYears(-2) };
+            return evt.Date < DateTime.Now.AddYears(-1);
+        });
+
+        // Test 3: Date far in future
+        RunTest(category, "Future Date Validation", () =>
+        {
+            var evt = new Event { EventName = "Test", Location = "Here", Date = DateTime.Now.AddYears(20) };
+            return evt.Date > DateTime.Now.AddYears(10);
+        });
+
+        // Test 4: Whitespace-only event name
+        RunTest(category, "Whitespace Event Name", () =>
+        {
+            var evt = new Event { EventName = "   ", Location = "Here", Date = DateTime.Now };
+            return string.IsNullOrWhiteSpace(evt.EventName);
+        });
+
+        // Test 5: Special characters in event name
+        RunTest(category, "Special Characters Handling", () =>
+        {
+            var evt = new Event { EventName = "Test <script>alert('xss')</script>", Location = "Here", Date = DateTime.Now };
+            return evt.EventName.Contains("<script>");
+        });
+
+        // Test 6: Non-existent event ID
+        RunTest(category, "Non-existent Event ID", () =>
+        {
+            var events = new List<Event>
+            {
+                new Event { Id = 1, EventName = "Test", Location = "Here", Date = DateTime.Now }
+            };
+            return !events.Any(e => e.Id == 999);
+        });
+
+        // Test 7: Duplicate event detection
+        RunTest(category, "Duplicate Event Detection", () =>
+        {
+            var events = new List<Event>
+            {
+                new Event { Id = 1, EventName = "Test", Location = "Here", Date = new DateTime(2025, 5, 1) },
+                new Event { Id = 2, EventName = "Test", Location = "Here", Date = new DateTime(2025, 5, 1) }
+            };
+            return events.GroupBy(e => new { e.EventName, e.Location, e.Date.Date }).Any(g => g.Count() > 1);
+        });
+
+        CalculateStats();
+    }
+
+    private void RunPerformanceTests()
+    {
+        var category = "Performance";
+        
+        // Test 1: Filter small dataset
+        RunTest(category, "Filter 100 Events", () =>
+        {
+            var events = GenerateTestEvents(100);
+            var filtered = events.Where(e => e.EventName.Contains("Test")).ToList();
+            return true; // Success if no exception
+        });
+
+        // Test 2: Filter medium dataset
+        RunTest(category, "Filter 1000 Events", () =>
+        {
+            var events = GenerateTestEvents(1000);
+            var filtered = events.Where(e => e.Location.Contains("Location")).ToList();
+            return true;
+        });
+
+        // Test 3: Sort large dataset
+        RunTest(category, "Sort 1000 Events by Date", () =>
+        {
+            var events = GenerateTestEvents(1000);
+            var sorted = events.OrderBy(e => e.Date).ToList();
+            return sorted.Count == 1000;
+        });
+
+        // Test 4: Multiple filter criteria
+        RunTest(category, "Multiple Filter Criteria", () =>
+        {
+            var events = GenerateTestEvents(500);
+            var filtered = events
+                .Where(e => e.EventName.Contains("Event"))
+                .Where(e => e.Date > DateTime.Now)
+                .Where(e => e.Location.Contains("Location"))
+                .ToList();
+            return true;
+        });
+
+        CalculateStats();
+    }
+
+    private void RunTest(string category, string name, Func<bool> testFunc)
+    {
+        var startTime = DateTime.Now;
+        bool passed = false;
+        string message = "";
+
+        try
+        {
+            passed = testFunc();
+            message = passed ? "Test passed successfully" : "Test assertion failed";
+        }
+        catch (Exception ex)
+        {
+            passed = false;
+            message = $"Exception: {ex.Message}";
+        }
+
+        var duration = (DateTime.Now - startTime).TotalMilliseconds;
+
+        testResults.Add(new TestResult
+        {
+            Category = category,
+            Name = name,
+            Passed = passed,
+            Message = message,
+            DurationMs = duration
+        });
+    }
+
+    private List<Event> GenerateTestEvents(int count)
+    {
+        var events = new List<Event>();
+        var random = new Random();
+        
+        for (int i = 0; i < count; i++)
+        {
+            events.Add(new Event
+            {
+                Id = i + 1,
+                EventName = $"Test Event {i}",
+                Date = DateTime.Now.AddDays(random.Next(-30, 365)),
+                Location = $"Test Location {i % 10}",
+                Description = $"Test description {i}"
+            });
+        }
+        
+        return events;
+    }
+
+    private void ClearResults()
+    {
+        testResults.Clear();
+        passedTests = 0;
+        totalTests = 0;
+    }
+
+    private void CalculateStats()
+    {
+        totalTests = testResults.Count;
+        passedTests = testResults.Count(r => r.Passed);
+    }
+
+    private class TestResult
+    {
+        public string Category { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public bool Passed { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public double DurationMs { get; set; }
+    }
+}

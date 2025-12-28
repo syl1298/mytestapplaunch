@@ -1,0 +1,101 @@
+@page "/registrations"
+@using MyBlazorApp.Models
+@using MyBlazorApp.Services
+@inject IEventDataService DataService
+@inject ISessionService SessionService
+
+<PageTitle>Registrations - EventEase</PageTitle>
+
+<div class="container">
+    <h1 class="mb-4">Event Registrations</h1>
+
+    <!-- Registrations List -->
+    <div class="card">
+        <div class="card-body">
+            @if (registrations.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Contact Number</th>
+                                <th>Event</th>
+                                <th>Registered Date</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var registration in registrations.OrderByDescending(r => r.RegisteredDate))
+                            {
+                                var evt = DataService.GetEventById(registration.EventId);
+                                <tr>
+                                    <td>@registration.Id</td>
+                                    <td>@registration.Name</td>
+                                    <td>@registration.Email</td>
+                                    <td>@registration.ContactNumber</td>
+                                    <td>@(evt?.EventName ?? "Unknown")</td>
+                                    <td>@registration.RegisteredDate.ToString("MM/dd/yyyy HH:mm")</td>
+                                    <td>
+                                        <span class="badge bg-@GetStatusColor(registration.Status)">
+                                            @registration.Status
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (registration.Status == RegistrationStatus.Confirmed)
+                                        {
+                                            <button class="btn btn-sm btn-danger" @onclick="() => CancelRegistration(registration.Id)">
+                                                Cancel
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-info">No registrations found.</div>
+            }
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="mt-4">
+        <a href="/events" class="btn btn-secondary">Back to Events</a>
+        <a href="/register" class="btn btn-primary ms-2">New Registration</a>
+    </div>
+</div>
+
+@code {
+    private List<Registration> registrations = new();
+
+    protected override void OnInitialized()
+    {
+        SessionService.UpdateActivity();
+        registrations = DataService.GetAllRegistrations();
+    }
+
+    private void CancelRegistration(int id)
+    {
+        DataService.CancelRegistration(id);
+        registrations = DataService.GetAllRegistrations();
+    }
+
+    private string GetStatusColor(RegistrationStatus status)
+    {
+        return status switch
+        {
+            RegistrationStatus.Confirmed => "success",
+            RegistrationStatus.Pending => "warning",
+            RegistrationStatus.Cancelled => "danger",
+            RegistrationStatus.Attended => "info",
+            _ => "secondary"
+        };
+    }
+}
